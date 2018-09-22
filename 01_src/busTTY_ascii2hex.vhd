@@ -24,7 +24,7 @@ library IEEE;
 
 
 --------------------------------------------------------------------------
--- bus teletype terminal (buyTTY)
+-- busTTY_ascii2hex: converts from ASCII encoded hex to hex numbers
 entity busTTY_ascii2hex is
 port    (
             CHAR        : in    std_logic_vector(7 downto 0);   --! ASCII encoded 8bit hexadecimal character
