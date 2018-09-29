@@ -53,6 +53,7 @@ architecture sim of busTTY_quadSR_tb is
         constant do_test_0  : boolean := true;  --! test0: check parallel load
         constant do_test_1  : boolean := true;  --! test1: check flag for non hexadecimal number ASCII input
         constant do_test_2  : boolean := true;  --! test2: check down shift
+        constant do_test_3  : boolean := true;  --! test3: check serial quad output
     -----------------------------
 
 
@@ -204,6 +205,35 @@ begin
                     EN  <= '0';
                     wait until rising_edge(C); wait for tskew;
                 end loop;
+            end loop;
+        end if;
+        -------------------------
+
+
+        -------------------------
+        -- Test3: check serial quad output
+        -------------------------
+        if ( DO_ALL_TEST or do_test_3 ) then
+            Report "Test3: check serial quad output";
+            wait until rising_edge(C); wait for tskew;
+            UNIFORM(seed1, seed2, rand);    --! dummy read, otherwise first rand is zero
+            UP  <= '1';
+            SI4 <= (others => '0');
+            for i in 0 to loop_iter-1 loop
+                UNIFORM(seed1, seed2, rand);    --! new random number
+                tmp := std_logic_vector(to_unsigned(integer(round(rand*(2.0**tmp'length-1.0))), tmp'length));
+                D   <= tmp;
+                LD  <= '1';
+                wait until rising_edge(C); wait for tskew;
+                LD  <= '0';
+                for j in STAGES-1 downto 0  loop
+                    assert ( SO4 = tmp(j*4+3 downto j*4) ) report "  Error: Serial output; shift=" & integer'image(STAGES-1-j) & ";" severity warning;
+                    if not ( SO4 = tmp(j*4+3 downto j*4) ) then good := false; end if;
+                    EN  <= '1';
+                    wait until rising_edge(C); wait for tskew;
+                end loop;
+                EN  <= '0';
+                wait until rising_edge(C); wait for tskew;
             end loop;
         end if;
         -------------------------

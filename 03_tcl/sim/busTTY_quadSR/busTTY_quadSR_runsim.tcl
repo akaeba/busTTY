@@ -21,4 +21,4 @@ vsim -novopt -gDO_ALL_TEST=true work.busTTY_quadSR_tb
 do "../03_tcl/sim/busTTY_quadSR/busTTY_quadSR_waveform.do"
 
 # sim until finish
-run 7.5 us
+run 9.5 us
