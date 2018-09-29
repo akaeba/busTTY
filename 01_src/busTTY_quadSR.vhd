@@ -37,8 +37,10 @@ port    (
             UP      : in    std_logic;      --! shift direction; 1: up (from lower QUAD to upper QUAD), 0: down (from upper QUAD to lower QUAD)
             EN      : in    std_logic;      --! enable shift
             LD      : in    std_logic;      --! load shift register, dominant over enable
-            -- data
-            QUAD    : in    std_logic_vector(3 downto 0);           --! serial input in quadruples
+            -- Serial
+            SI4     : in    std_logic_vector(3 downto 0);           --! serial input in quadruples
+            SO4     : out   std_logic_vector(3 downto 0);           --! serial output
+            -- Parallel
             D       : in    std_logic_vector(STAGES*4-1 downto 0);  --! parallel data input
             Q       : out   std_logic_vector(STAGES*4-1 downto 0)   --! parallel data output
         );
@@ -78,12 +80,12 @@ begin
                     for i in STAGES-1 downto 1 loop
                         shift_reg(i) <= shift_reg(i-1);     --! shift up
                     end loop;
-                    shift_reg(0) <= QUAD;                   --! fill new data in
+                    shift_reg(0) <= SI4;                    --! fill new data in
                 else
                     for i in 0 to STAGES-2 loop
                         shift_reg(i) <= shift_reg(i+1);     --! shift down
                     end loop;
-                    shift_reg(STAGES-1) <= (others => '0'); --! pad with zero
+                    shift_reg(STAGES-1) <= SI4;             --! pad with zero
                 end if;
             end if;
         end if;
@@ -92,9 +94,12 @@ begin
 
     ----------------------------------------------
     -- Output
+        -- Parallel
     g_Q : for i in 0 to STAGES-1 generate
         Q(i*4+3 downto i*4) <= shift_reg(i);
     end generate g_Q;
+        -- Serial
+    SO4 <= shift_reg(STAGES-1);
     ----------------------------------------------
 
 end architecture rtl;

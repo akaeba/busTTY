@@ -64,7 +64,8 @@ architecture sim of busTTY_quadSR_tb is
         signal UP   : std_logic;
         signal EN   : std_logic;
         signal LD   : std_logic;
-        signal QUAD : std_logic_vector(3 downto 0);
+        signal SI4  : std_logic_vector(3 downto 0);
+        signal SO4  : std_logic_vector(3 downto 0);
         signal D    : std_logic_vector(STAGES*4-1 downto 0);
         signal Q    : std_logic_vector(STAGES*4-1 downto 0);
     -----------------------------
@@ -78,14 +79,15 @@ begin
                         STAGES => STAGES
                     )
         port map    (
-                        R       => R,
-                        C       => C,
-                        UP      => UP,
-                        EN      => EN,
-                        LD      => LD,
-                        QUAD    => QUAD,
-                        D       => D,
-                        Q       => Q
+                        R	=> R,
+                        C	=> C,
+                        UP	=> UP,
+                        EN	=> EN,
+                        LD	=> LD,
+                        SI4	=> SI4,
+						SO4	=> SO4,
+                        D	=> D,
+                        Q	=> Q
                     );
     ----------------------------------------------
 
@@ -109,7 +111,7 @@ begin
             UP      <= '1';
             EN      <= '0';
             LD      <= '0';
-            QUAD    <= (others => '0');
+            SI4     <= (others => '0');
             D       <= (others => '0');
             wait for 5*tclk;
             wait until rising_edge(C); wait for tskew;
@@ -152,7 +154,7 @@ begin
                 UNIFORM(seed1, seed2, rand);    --! new random number
                 tmp := std_logic_vector(to_unsigned(integer(round(rand*(2.0**tmp'length-1.0))), tmp'length));
                 for j in STAGES-1 downto 0 loop
-                    QUAD    <= tmp(j*4+3 downto j*4);
+                    SI4     <= tmp(j*4+3 downto j*4);
                     EN      <= '1';
                     UP      <= '1';
                     wait until rising_edge(C); wait for tskew;
@@ -179,6 +181,7 @@ begin
                 D   <= tmp;
                 LD  <= '1';
                 UP  <= '0';
+				SI4 <= (others => '0');
                 wait until rising_edge(C); wait for tskew;
                 LD  <= '0';
                 for j in 0 to STAGES loop

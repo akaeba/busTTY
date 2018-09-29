@@ -7,9 +7,10 @@ add wave -noupdate -divider Data/Ctrl
 add wave -noupdate /bustty_quadsr_tb/UP
 add wave -noupdate /bustty_quadsr_tb/EN
 add wave -noupdate /bustty_quadsr_tb/LD
-add wave -noupdate -radix hexadecimal /bustty_quadsr_tb/QUAD
 add wave -noupdate -radix hexadecimal /bustty_quadsr_tb/D
 add wave -noupdate -radix hexadecimal /bustty_quadsr_tb/Q
+add wave -noupdate -radix hexadecimal /bustty_quadsr_tb/SI4
+add wave -noupdate -radix hexadecimal /bustty_quadsr_tb/SO4
 TreeUpdate [SetDefaultTree]
 WaveRestoreCursors {{Cursor 1} {171000 ps} 0}
 quietly wave cursor active 1
@@ -27,4 +28,4 @@ configure wave -griddelta 40
 configure wave -timeline 0
 configure wave -timelineunits ps
 update
-WaveRestoreZoom {0 ps} {1186880 ps}
+WaveRestoreZoom {0 ps} {7875 ns}
