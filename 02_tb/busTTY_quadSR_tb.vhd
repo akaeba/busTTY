@@ -79,15 +79,15 @@ begin
                         STAGES => STAGES
                     )
         port map    (
-                        R	=> R,
-                        C	=> C,
-                        UP	=> UP,
-                        EN	=> EN,
-                        LD	=> LD,
-                        SI4	=> SI4,
-						SO4	=> SO4,
-                        D	=> D,
-                        Q	=> Q
+                        R   => R,
+                        C   => C,
+                        UP  => UP,
+                        EN  => EN,
+                        LD  => LD,
+                        SI4 => SI4,
+                        SO4 => SO4,
+                        D   => D,
+                        Q   => Q
                     );
     ----------------------------------------------
 
@@ -181,7 +181,7 @@ begin
                 D   <= tmp;
                 LD  <= '1';
                 UP  <= '0';
-				SI4 <= (others => '0');
+                SI4 <= (others => '0');
                 wait until rising_edge(C); wait for tskew;
                 LD  <= '0';
                 for j in 0 to STAGES loop
