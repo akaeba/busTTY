@@ -27,7 +27,7 @@ library IEEE;
 entity busTTY_RSFF is
 generic (
             RDOM    : boolean   := true;    --! Reset is dominant over Set
-            RSTQ    : bit       := '0'      --! Out
+            RSTQ    : bit       := '0'      --! Output in case of RESET=1 or R=1
         );
 port    (
             -- Clock/Reset
