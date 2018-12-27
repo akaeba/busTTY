@@ -26,8 +26,14 @@ add wave -noupdate /bustty_fsm_tb/DUT/UART_RX_NOHEX
 add wave -noupdate /bustty_fsm_tb/DUT/UART_TX_EMPTY
 add wave -noupdate /bustty_fsm_tb/DUT/UART_TX_MUX
 add wave -noupdate /bustty_fsm_tb/DUT/UART_TX_NEW
+add wave -noupdate -divider {Message ROM}
+add wave -noupdate -radix unsigned /bustty_fsm_tb/MSG_ADR
+add wave -noupdate /bustty_fsm_tb/MSG_END
+add wave -noupdate -divider UART_TX
+add wave -noupdate -radix ascii /bustty_fsm_tb/uartTX
+add wave -noupdate /bustty_fsm_tb/uartTXstart
 TreeUpdate [SetDefaultTree]
-WaveRestoreCursors {{Cursor 1} {171000 ps} 0}
+WaveRestoreCursors {{Cursor 1} {22941728 ps} 0}
 quietly wave cursor active 1
 configure wave -namecolwidth 274
 configure wave -valuecolwidth 57
@@ -43,4 +49,4 @@ configure wave -griddelta 40
 configure wave -timeline 0
 configure wave -timelineunits ps
 update
-WaveRestoreZoom {0 ps} {10410248 ps}
+WaveRestoreZoom {0 ps} {41640992 ps}
