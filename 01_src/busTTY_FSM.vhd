@@ -59,7 +59,9 @@ port    (
             -- Parallel
             MEM_EN          : out   std_logic;  --! perform access
             MEM_WR          : out   std_logic;  --! high active memory write, low active memory read
-            MEM_ACK         : in    std_logic   --! request acknowledge
+            MEM_ACK         : in    std_logic;  --! request acknowledge
+            -- Debug
+            FSM             : out   std_logic_vector(7 downto 0)    --! FSM Internal States
         );
 end entity busTTY_FSM;
 --------------------------------------------------------------------------
@@ -79,10 +81,11 @@ architecture rtl of busTTY_FSM is
             LD_HELP_MSG_S,          --! load pointer reg for help command
             LD_NL_MSG_S,            --! new line and go to idle
             LD_UNEXPIN_MSG_S,       --! unexpected input provided
-            PRT_MSG_CHK_TX_S,       --! check if TX is free, otherwise wait
-            PRT_MSG_TX_WR_S,        --! write new character
-            PRT_MSG_FETCH_ROM_S,    --! fetch new character from ROM
-            WT_TX_FREE_GO_IDLE,     --! wait for freeing TX buffer and go to IDLE
+            LD_MEMIF_STUCK_S,       --! Message:    load stuck memif message
+            PRT_MSG_CHK_TX_S,       --! Print:      check if TX is free, otherwise wait
+            PRT_MSG_TX_WR_S,        --! Print:      write new character
+            PRT_MSG_FETCH_ROM_S,    --! Print:      fetch new character from ROM
+            WT_TX_FREE_GO_IDLE,     --! Misc:       wait for freeing TX buffer and go to IDLE
             CMD_CAPTURE_S,          --! Command:    capture command and decode
             CMD_WT_CHK_S,           --! Command:    wait for next character and check
             ADR_SET_CHAR_CNTR_S,    --! Address:    preset character counter
@@ -184,23 +187,27 @@ begin
                     end if;
                 end if;
 
-            -- load pointer reg for print message
+            -- Message: load pointer reg for print message
             when LD_LOGON_MSG_S =>
                 next_state  <= PRT_MSG_CHK_TX_S;
 
-            -- load help message
+            -- Message: load help message
             when LD_HELP_MSG_S =>
                 next_state <= PRT_MSG_CHK_TX_S;
 
-            -- unexpected input
+            -- Message: unexpected input
             when LD_UNEXPIN_MSG_S =>
                 next_state <= PRT_MSG_CHK_TX_S;
 
-            -- prepare for print new line
+            -- Message: new line
             when LD_NL_MSG_S =>
                 next_state <= PRT_MSG_CHK_TX_S;
 
-            -- check if transmit buffer is empty, otherwise wait
+            -- Message: Load Stuck on MEMIF message
+            when LD_MEMIF_STUCK_S =>
+                next_state <= PRT_MSG_CHK_TX_S;
+
+            -- Print: check if transmit buffer is empty, otherwise wait
             when PRT_MSG_CHK_TX_S =>
                 if ( MSG_END = '1' ) then
                     next_state <= WT_TX_FREE_GO_IDLE;
@@ -319,7 +326,7 @@ begin
             -- Read/Write: perform memory access
             when RDWR_MEM_ACS_S =>
                 if ( to_integer(to_01(unsigned(tiout_cntr_cnt))) = 0 ) then
-                    -- todo: print MEMIF stuck message
+                    next_state <= LD_MEMIF_STUCK_S;
                 else
                     if ( MEM_ACK = '1' ) then
                         if ( operation = OP_WRITE ) then
@@ -406,12 +413,13 @@ begin
     -- FSM related
         -- load message address register
     with current_state select message_adr_nxt <=
-        std_logic_vector(to_unsigned(C_MSG_LOGON, message_adr_nxt'length))      when LD_LOGON_MSG_S,        --! logon
-        std_logic_vector(to_unsigned(C_MSG_HELP, message_adr_nxt'length))       when LD_HELP_MSG_S,         --! print help
-        std_logic_vector(to_unsigned(C_MSG_NEW_LINE, message_adr_nxt'length))   when LD_NL_MSG_S,           --! new line
-        std_logic_vector(to_unsigned(C_MSG_UNEXP_INP, message_adr_nxt'length))  when LD_UNEXPIN_MSG_S,      --! unexpected input
-        std_logic_vector(unsigned(message_adr) + 1)                             when PRT_MSG_FETCH_ROM_S,   --! increment ROM adr
-        message_adr                                                             when others;                --! do nothing
+        std_logic_vector(to_unsigned(C_MSG_LOGON,       message_adr_nxt'length))    when LD_LOGON_MSG_S,        --! logon
+        std_logic_vector(to_unsigned(C_MSG_HELP,        message_adr_nxt'length))    when LD_HELP_MSG_S,         --! print help
+        std_logic_vector(to_unsigned(C_MSG_NEW_LINE,    message_adr_nxt'length))    when LD_NL_MSG_S,           --! new line
+        std_logic_vector(to_unsigned(C_MSG_UNEXP_INP,   message_adr_nxt'length))    when LD_UNEXPIN_MSG_S,      --! unexpected input
+        std_logic_vector(to_unsigned(C_MSG_MEMIF_STUCK, message_adr_nxt'length))    when LD_MEMIF_STUCK_S,      --! load message for stuck on MEMIF
+        std_logic_vector(unsigned(message_adr) + 1)                                 when PRT_MSG_FETCH_ROM_S,   --! increment ROM adr
+        message_adr                                                                 when others;                --! do nothing
 
         -- set logon flag
     with current_state select print_logon_msg_nxt <=
@@ -549,7 +557,15 @@ begin
     ----------------------------------------------
     -- Assignments
     MSG_ADR <= message_adr;
+    ----------------------------------------------
 
+
+    ----------------------------------------------
+    -- FSM debug output
+    with current_state select FSM <=
+         std_logic_vector(to_unsigned(00, FSM'length))  when IDLE_S,    --! IDLE
+                                                                        --! TODO!
+         (others => '1')                                when others;    --! default asignment
     ----------------------------------------------
 
 end architecture rtl;

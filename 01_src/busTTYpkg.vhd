@@ -55,6 +55,7 @@ package busTTYpkg is
     constant C_MSG_NEW_LINE     : integer := 0; --! new line
     constant C_MSG_INC_CMD      : integer := 0; --! incomplete command sent
     constant C_MSG_UNEXP_INP    : integer := 0; --! unexpected input
+    constant C_MSG_MEMIF_STUCK  : integer := 0; --! stuck on memory IF
 
 
     -----------------------------
