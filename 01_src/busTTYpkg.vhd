@@ -64,8 +64,6 @@ package busTTYpkg is
     constant C_ASCII_WR_1   : integer   := character'pos('W');  --!
     constant C_ASCII_RD_0   : integer   := character'pos('r');  --!
     constant C_ASCII_RD_1   : integer   := character'pos('R');  --!
-    constant C_ASCII_XREG_0 : integer   := character'pos('x');  --!
-    constant C_ASCII_XREG_1 : integer   := character'pos('X');  --!
 
 
 
