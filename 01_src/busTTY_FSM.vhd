@@ -77,10 +77,10 @@ architecture rtl of busTTY_FSM is
     type t_busTTY_FSM is
         (
             IDLE_S,                 --! Nop:        IDLE state
-            LD_LOGON_MSG_S,         --! Load counter to print logon message
-            LD_HELP_MSG_S,          --! load pointer reg for help command
-            LD_NL_MSG_S,            --! new line and go to idle
-            LD_UNEXPIN_MSG_S,       --! unexpected input provided
+            LD_LOGON_MSG_S,         --! Message:    Load counter to print logon message
+            LD_HELP_MSG_S,          --! Message:    load pointer reg for help command
+            LD_NL_MSG_S,            --! Message:    new line and go to idle
+            LD_UNEXPIN_MSG_S,       --! Message:    unexpected input provided
             LD_MEMIF_STUCK_S,       --! Message:    load stuck memif message
             PRT_MSG_CHK_TX_S,       --! Print:      check if TX is free, otherwise wait
             PRT_MSG_TX_WR_S,        --! Print:      write new character
@@ -95,9 +95,10 @@ architecture rtl of busTTY_FSM is
             RDWR_SET_CHAR_CNTR_S,   --! Read/Write: set character counter for number fo chars to catch
             RDWR_WT_CHAR_S,         --! Read/Write: wait for data
             RDWR_CAP_S,             --! Read/Write: capture into shift register
-            RDWR_LEFT_S,            --! Read/Write: load of data / burst length register complete?
+            RDWR_DAT_BRST_LEFT_S,   --! Read/Write: load of data / burst length register complete?
             RDWR_MEM_ACS_S,         --! Read/Write: perform Memory access, read or write
-            RD_INC_ADR_SET_CNTRS_S, --! Read:       Increment Address, Decrement Burst Length, Load Character counter
+            RDWR_INCADR_DECBRST_S,  --! Read/Write: Increment Address, Decrement Burst Length,
+            RD_SET_CHAR_CNTR_S,     --! Read:       Load Character counter
             RD_SEND_WT_S,           --! Read:       wait for free TX register
             RD_SEND_DAT_S,          --! Read:       load TX register
             RD_SEND_BLNK_S,         --! Read:       load TX with blank
@@ -298,9 +299,9 @@ begin
             -- Read/Write: wait for ASCII hex char
             when RDWR_WT_CHAR_S =>
                 if ( UART_RX_NEW = '1' ) then
-                    if ( char_escape = '1' or char_enter = '1' ) then       --! end of read/write requested
+                    if ( char_escape = '1' ) then       --! end of read/write requested
                         next_state <= LD_NL_MSG_S;
-                    elsif ( char_blank = '1' ) then     --! all data collected, write goes on after
+                    elsif ( char_blank = '1' or char_enter = '1' ) then --! all data collected, write goes on after
                         next_state <= RDWR_MEM_ACS_S;
                     elsif ( UART_RX_NOHEX = '0' ) then
                         next_state <= RDWR_CAP_S;       --! capture into QSR
@@ -313,15 +314,7 @@ begin
 
             -- Read/Write: capture into data or burst length QSR
             when RDWR_CAP_S =>
-                next_state <= RDWR_LEFT_S;
-
-            -- Read/Write: check if data is left, otherwise perform memory access
-            when RDWR_LEFT_S =>
-                if ( to_integer(to_01(unsigned(char_cntr_cnt))) = 0 ) then
-                    next_state <= RDWR_MEM_ACS_S;
-                else
-                    next_state <= RDWR_WT_CHAR_S;
-                end if;
+                next_state <= RDWR_WT_CHAR_S;
 
             -- Read/Write: perform memory access
             when RDWR_MEM_ACS_S =>
@@ -329,20 +322,28 @@ begin
                     next_state <= LD_MEMIF_STUCK_S;
                 else
                     if ( MEM_ACK = '1' ) then
-                        if ( operation = OP_WRITE ) then
-                            next_state <= RDWR_SET_CHAR_CNTR_S;
-                        elsif ( operation = OP_READ ) then
-                            next_state <= RD_INC_ADR_SET_CNTRS_S;
+                        if ( char_enter = '1' ) then    --! avoids lost of last written value, and exit
+                            next_state <= LD_NL_MSG_S;
                         else
-                            next_state <= ERROR_S;
+                            next_state <= RDWR_INCADR_DECBRST_S;
                         end if;
                     else
                         next_state <= RDWR_MEM_ACS_S;
                     end if;
                 end if;
 
-            -- Read: Increment Address, Decrement Burst Length, Load Character counter
-            when RD_INC_ADR_SET_CNTRS_S =>
+            -- Read/Write: Increment Address, Decrement Burst Length
+            when RDWR_INCADR_DECBRST_S =>
+                if ( operation = OP_WRITE ) then
+                    next_state <= RDWR_SET_CHAR_CNTR_S;
+                elsif ( operation = OP_READ ) then
+                    next_state <= RD_SET_CHAR_CNTR_S;
+                else
+                    next_state <= ERROR_S;
+                end if;
+
+            -- Read: Set character counter
+            when RD_SET_CHAR_CNTR_S =>
                 next_state <= RD_SEND_WT_S;
 
             -- Read: Wait for free TX Line, allow escape sequence
@@ -433,12 +434,12 @@ begin
 
         -- character counter count control
     with current_state select char_cntr_nxt <=
-        std_logic_vector(unsigned(char_cntr_cnt) - 1)                           when RDWR_CAP_S,                --! decrement, cause new character was captured
-        std_logic_vector(unsigned(char_cntr_cnt) - 1)                           when ADR_CAP_S,                 --! decrement, cause new character was captured
-        std_logic_vector(to_unsigned(C_NUM_ADR_CHARS, char_cntr_nxt'length))    when ADR_SET_CHAR_CNTR_S,       --! preset for char count to meet address width
-        char_cntr_set_rd_wr                                                     when RDWR_SET_CHAR_CNTR_S,      --! preset for char count to meet data (wr) or burst (rd) char counter
-        char_cntr_set_rd_wr                                                     when RD_INC_ADR_SET_CNTRS_S,    --! preset for char count to send all data
-        char_cntr_cnt                                                           when others;                    --! hold
+        std_logic_vector(unsigned(char_cntr_cnt) - 1)                           when RDWR_CAP_S,            --! decrement, cause new character was captured
+        std_logic_vector(unsigned(char_cntr_cnt) - 1)                           when ADR_CAP_S,             --! decrement, cause new character was captured
+        std_logic_vector(to_unsigned(C_NUM_ADR_CHARS, char_cntr_nxt'length))    when ADR_SET_CHAR_CNTR_S,   --! preset for char count to meet address width
+        char_cntr_set_rd_wr                                                     when RDWR_SET_CHAR_CNTR_S,  --! preset for char count to meet data (wr) or burst (rd) char counter
+        char_cntr_set_rd_wr                                                     when RD_SET_CHAR_CNTR_S,    --! preset for char count to send all data
+        char_cntr_cnt                                                           when others;                --! hold
 
         -- select preset based on read/write
     with operation select char_cntr_set_rd_wr <=
@@ -449,6 +450,7 @@ begin
         -- time out counter to detect memory IF stuck
     with current_state select tiout_cntr_nxt <=
         std_logic_vector(to_unsigned(TIOUT_MEM_CYC, tiout_cntr_nxt'length)) when RDWR_SET_CHAR_CNTR_S,  --! init counter for first entry in memory access and request respond loop
+        std_logic_vector(to_unsigned(TIOUT_MEM_CYC, tiout_cntr_nxt'length)) when RD_SEND_BLNK_S,        --! read loop
         std_logic_vector(unsigned(tiout_cntr_cnt) - 1)                      when RDWR_MEM_ACS_S,        --! decrement to run in tiout
         tiout_cntr_cnt                                                      when others;                --! on hold
     ----------------------------------------------
@@ -533,24 +535,25 @@ begin
 
         -- address shift register
     with current_state select QSR_IST_ADR <=
-        C_QSR_OP_CLR    when CMD_CAPTURE_S,             --! clear address register
-        C_QSR_OP_SLD    when ADR_CAP_S,                 --! serial load address
-        C_QSR_OP_INC    when RD_INC_ADR_SET_CNTRS_S,    --! increment address for next read
-        C_QSR_OP_NOP    when others;                    --! do nothing
+        C_QSR_OP_CLR    when CMD_CAPTURE_S,         --! clear address register
+        C_QSR_OP_SLD    when ADR_CAP_S,             --! serial load address
+        C_QSR_OP_INC    when RDWR_INCADR_DECBRST_S, --! increment address for next read
+        C_QSR_OP_NOP    when others;                --! do nothing
 
         -- data shift register
     with current_state select QSR_IST_DAT <=
-        C_QSR_OP_CLR    when CMD_CAPTURE_S,     --! clear all shift register
-        qsr_op_wr_sld   when RDWR_CAP_S,        --! SLD/NOP based on operation to perform
-        qsr_op_rd_pld   when RDWR_MEM_ACS_S,    --! PLD/NOP based on operation to perform
-        C_QSR_OP_NOP    when others;            --! do nothing
+        C_QSR_OP_CLR    when CMD_CAPTURE_S,         --! clear all shift register
+        qsr_op_wr_sld   when RDWR_CAP_S,            --! SLD/NOP based on operation to perform
+        qsr_op_rd_pld   when RDWR_MEM_ACS_S,        --! PLD/NOP based on operation to perform
+        C_QSR_OP_CLR    when RDWR_INCADR_DECBRST_S, --! increment address for next read
+        C_QSR_OP_NOP    when others;                --! do nothing
 
         -- read length register (burst)
     with current_state select QSR_IST_BRST <=
-        C_QSR_OP_CLR    when CMD_CAPTURE_S,             --! clear all shift register
-        qsr_op_rd_sld   when RDWR_CAP_S,                --! serial load in case of read, otherwise nop
-        C_QSR_OP_DEC    when RD_INC_ADR_SET_CNTRS_S,    --! decrement burst counter register
-        C_QSR_OP_NOP    when others;                    --! do nothing
+        C_QSR_OP_CLR    when CMD_CAPTURE_S,         --! clear all shift register
+        qsr_op_rd_sld   when RDWR_CAP_S,            --! serial load in case of read, otherwise nop
+        C_QSR_OP_DEC    when RDWR_INCADR_DECBRST_S, --! decrement burst counter register
+        C_QSR_OP_NOP    when others;                --! do nothing
     ---------------------------------------------
 
 
@@ -565,7 +568,7 @@ begin
     with current_state select FSM <=
          std_logic_vector(to_unsigned(00, FSM'length))  when IDLE_S,    --! IDLE
                                                                         --! TODO!
-         (others => '1')                                when others;    --! default asignment
+         (others => '1')                                when others;    --! default assignment
     ----------------------------------------------
 
 end architecture rtl;
