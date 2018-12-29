@@ -146,6 +146,8 @@ architecture rtl of busTTY_FSM is
         signal qsr_op_rd_pld        : std_logic_vector(C_QSR_IST_LEN-1 downto 0);       --! enable QSR parallel load in case of read
         signal qsr_op_rd_sld        : std_logic_vector(C_QSR_IST_LEN-1 downto 0);       --! enable QSR serial load in case of read
         signal qsr_op_wr_sld        : std_logic_vector(C_QSR_IST_LEN-1 downto 0);       --! enable QSR serial load in case of write
+        signal go_to_idle           : std_logic;                                        --! marks UART idle request on the next possibility
+        signal go_to_idle_nxt       : std_logic;                                        --! combinatoric signal
     -----------------------------
 
 begin
@@ -166,7 +168,8 @@ begin
                                 char_cntr_cnt,      --! number of characters left
                                 MEM_ACK,            --! acknowledge for perform request
                                 tiout_cntr_cnt,     --! checks for request time out
-                                QSR_ZCNT_BRST       --! burst length register has zero count
+                                QSR_ZCNT_BRST,      --! burst length register has zero count
+                                go_to_idle          --! graceful idle request flag
                             )
     begin
         next_state  <=  current_state;  --! default
@@ -322,7 +325,7 @@ begin
                     next_state <= LD_MEMIF_STUCK_S;
                 else
                     if ( MEM_ACK = '1' ) then
-                        if ( char_enter = '1' ) then    --! avoids lost of last written value, and exit
+                        if ( go_to_idle = '1' ) then    --! avoids lost of last written value, and exit
                             next_state <= LD_NL_MSG_S;
                         else
                             next_state <= RDWR_INCADR_DECBRST_S;
@@ -396,6 +399,7 @@ begin
             operation       <= OP_NOP;          --!
             char_cntr_cnt   <= (others => '0'); --! reset
             tiout_cntr_cnt  <= (others => '0'); --!
+            go_to_idle      <= '0';
 
         elsif ( rising_edge(C) ) then
             current_state   <= next_state;          --! state update
@@ -404,6 +408,7 @@ begin
             operation       <= operation_nxt;       --!
             char_cntr_cnt   <= char_cntr_nxt;       --!
             tiout_cntr_cnt  <= tiout_cntr_nxt;      --!
+            go_to_idle      <= go_to_idle_nxt;      --!
 
         end if;
     end process p_register;
@@ -453,6 +458,13 @@ begin
         std_logic_vector(to_unsigned(TIOUT_MEM_CYC, tiout_cntr_nxt'length)) when RD_SEND_BLNK_S,        --! read loop
         std_logic_vector(unsigned(tiout_cntr_cnt) - 1)                      when RDWR_MEM_ACS_S,        --! decrement to run in tiout
         tiout_cntr_cnt                                                      when others;                --! on hold
+
+        -- go to idle request flag
+    with current_state select go_to_idle_nxt <=
+        char_enter  when RDWR_WT_CHAR_S,    --! capture excape symbol, to leave after memory access
+        '0'         when IDLE_S,            --! clear idle request flag
+        go_to_idle  when others;            --! hold
+
     ----------------------------------------------
 
 
