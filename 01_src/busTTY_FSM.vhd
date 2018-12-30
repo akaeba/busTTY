@@ -76,33 +76,36 @@ architecture rtl of busTTY_FSM is
         -- FSM states
     type t_busTTY_FSM is
         (
-            IDLE_S,                 --! Nop:        IDLE state
-            LD_LOGON_MSG_S,         --! Message:    Load counter to print logon message
-            LD_HELP_MSG_S,          --! Message:    load pointer reg for help command
-            LD_NL_MSG_S,            --! Message:    new line and go to idle
-            LD_UNEXPIN_MSG_S,       --! Message:    unexpected input provided
-            LD_MEMIF_STUCK_S,       --! Message:    load stuck memif message
-            PRT_MSG_CHK_TX_S,       --! Print:      check if TX is free, otherwise wait
-            PRT_MSG_TX_WR_S,        --! Print:      write new character
-            PRT_MSG_FETCH_ROM_S,    --! Print:      fetch new character from ROM
-            WT_TX_FREE_GO_IDLE,     --! Misc:       wait for freeing TX buffer and go to IDLE
-            CMD_CAPTURE_S,          --! Command:    capture command and decode
-            CMD_WT_CHK_S,           --! Command:    wait for next character and check
-            ADR_SET_CHAR_CNTR_S,    --! Address:    preset character counter
-            ADR_WT_CHAR_S,          --! Address:    wait for data interpreted as address
-            ADR_CAP_S,              --! Address:    move from UART to QSR
-            ADR_LEFT_S,             --! Address:    ADR data is missing
-            RDWR_SET_CHAR_CNTR_S,   --! Read/Write: set character counter for number fo chars to catch
-            RDWR_WT_CHAR_S,         --! Read/Write: wait for data
-            RDWR_CAP_S,             --! Read/Write: capture into shift register
-            RDWR_DAT_BRST_LEFT_S,   --! Read/Write: load of data / burst length register complete?
-            RDWR_MEM_ACS_S,         --! Read/Write: perform Memory access, read or write
-            RDWR_INCADR_DECBRST_S,  --! Read/Write: Increment Address, Decrement Burst Length,
-            RD_SET_CHAR_CNTR_S,     --! Read:       Load Character counter
-            RD_SEND_WT_S,           --! Read:       wait for free TX register
-            RD_SEND_DAT_S,          --! Read:       load TX register
-            RD_SEND_BLNK_S,         --! Read:       load TX with blank
-            ERROR_S                 --! ERO:        something went wrong
+            IDLE_S,                     --! Nop:        IDLE state
+            LD_LOGON_MSG_S,             --! Message:    Load counter to print logon message
+            LD_HELP_MSG_S,              --! Message:    load pointer reg for help command
+            LD_NL_MSG_S,                --! Message:    new line and go to idle
+            LD_UNEXPIN_MSG_S,           --! Message:    unexpected input provided
+            LD_MEMIF_STUCK_S,           --! Message:    load stuck memif message
+            PRT_MSG_CHK_TX_S,           --! Print:      check if TX is free, otherwise wait
+            PRT_MSG_TX_WR_S,            --! Print:      write new character
+            PRT_MSG_FETCH_ROM_S,        --! Print:      fetch new character from ROM
+            WT_TX_FREE_GO_IDLE,         --! Misc:       wait for freeing TX buffer and go to IDLE
+            CMD_CAPTURE_S,              --! Command:    capture command and decode
+            CMD_WT_CHK_S,               --! Command:    wait for next character and check
+            ADR_SET_CHAR_CNTR_S,        --! Address:    preset character counter
+            ADR_WT_CHAR_S,              --! Address:    wait for data interpreted as address
+            ADR_CAP_S,                  --! Address:    move from UART to QSR
+            WR_SET_CNTR_DAT_TIOUT_S,    --! Write:      Preload Character Counter and Tiout Counter
+            WR_WT_CHAR_S,               --! Write:      Wait for new character and decide ongoing
+            WR_CAP_S,                   --! Write:      Capture UART RX Reg value into QSR
+            WR_MEMIF_S,                 --! Write:      Request Memory Access
+            WR_INC_ADR_S,               --! Write:      Increment Address
+            RD_SET_CNTR_BRST_TIOUT_S,   --! Read:       set character counter for burst length load
+            RD_WT_CHAR_S,               --! Read:       Wait for burst length character receive
+            RD_CAP_S,                   --! Read:       Capture input character
+            RD_MEMIF_S,                 --! Read:       perform Read Access
+            RD_SET_CHRSD_LDDAT_S,       --! Read:       Load Character counter
+            RD_SEND_WT_S,               --! Read:       wait for free TX register
+            RD_SEND_DAT_S,              --! Read:       load TX register
+            RD_SEND_BLNK_S,             --! Read:       load TX with blank
+            RD_INCADR_DECBRST_S,        --! Read:       Increment Address, Decrement Burst Counter
+            ERROR_S                     --! ERO:        something went wrong
 
         );
         -- Operations
@@ -140,14 +143,8 @@ architecture rtl of busTTY_FSM is
         signal char_blank           : std_logic;                                        --! Blank received
         signal char_cntr_cnt        : std_logic_vector(C_WIDTH_CHAR_CNTR-1 downto 0);   --! character counter; figures out when all chars are captured
         signal char_cntr_nxt        : std_logic_vector(char_cntr_cnt'range);            --! next value
-        signal char_cntr_set_rd_wr  : std_logic_vector(char_cntr_cnt'range);            --! preset character counter, write -> data QSR, read -> burst length QSR
         signal tiout_cntr_cnt       : std_logic_vector(C_WIDTH_TIOUT_CNTR-1 downto 0);  --! registered value
         signal tiout_cntr_nxt       : std_logic_vector(tiout_cntr_cnt'range);           --! next
-        signal qsr_op_rd_pld        : std_logic_vector(C_QSR_IST_LEN-1 downto 0);       --! enable QSR parallel load in case of read
-        signal qsr_op_rd_sld        : std_logic_vector(C_QSR_IST_LEN-1 downto 0);       --! enable QSR serial load in case of read
-        signal qsr_op_wr_sld        : std_logic_vector(C_QSR_IST_LEN-1 downto 0);       --! enable QSR serial load in case of write
-        signal go_to_idle           : std_logic;                                        --! marks UART idle request on the next possibility
-        signal go_to_idle_nxt       : std_logic;                                        --! combinatoric signal
     -----------------------------
 
 begin
@@ -168,8 +165,7 @@ begin
                                 char_cntr_cnt,      --! number of characters left
                                 MEM_ACK,            --! acknowledge for perform request
                                 tiout_cntr_cnt,     --! checks for request time out
-                                QSR_ZCNT_BRST,      --! burst length register has zero count
-                                go_to_idle          --! graceful idle request flag
+                                QSR_ZCNT_BRST       --! burst length register has zero count
                             )
     begin
         next_state  <=  current_state;  --! default
@@ -263,90 +259,122 @@ begin
             when ADR_SET_CHAR_CNTR_S =>
                 next_state <= ADR_WT_CHAR_S;
 
-            -- Address Capture: Wait for characters
+            -- Address: Wait for characters
             when ADR_WT_CHAR_S =>
-                if ( operation = OP_NOP ) then
-                    next_state  <= LD_HELP_MSG_S;
-                else
-                    if ( UART_RX_NEW = '1' ) then
-                        if ( char_escape = '1' ) then               --! escape requested
-                            next_state <= LD_NL_MSG_S;
-                        elsif ( char_blank = '1' ) then             --! all data collected, write goes on after
-                            next_state <= RDWR_SET_CHAR_CNTR_S;
-                        elsif ( UART_RX_NOHEX = '0' ) then
+                if ( UART_RX_NEW = '1' ) then
+                    if ( char_escape = '1' ) then               --! escape requested
+                        next_state <= LD_NL_MSG_S;
+                    elsif ( char_blank = '1' ) then             --! all data collected, go on on next stage
+                        if ( operation = OP_READ ) then
+                            next_state <= RD_SET_CNTR_BRST_TIOUT_S; --! go on with FSM Read part
+                        elsif ( operation = OP_WRITE ) then
+                            next_state <= WR_SET_CNTR_DAT_TIOUT_S;  --! go on with write Part of FSM
+                        else
+                            next_state <= ERROR_S;
+                        end if;
+                    elsif ( UART_RX_NOHEX = '0' ) then
+                        if ( to_integer(to_01(unsigned(char_cntr_cnt))) > 0 ) then  -- capture only address if space is left
                             next_state <= ADR_CAP_S;
                         else
-                            next_state <= ADR_WT_CHAR_S;            --! no suitable input, wait for next character
+                            next_state <= ADR_WT_CHAR_S;
                         end if;
                     else
-                        next_state <= ADR_WT_CHAR_S;
+                        next_state <= LD_UNEXPIN_MSG_S;     --! no suitable input, print no suitable input message with help
                     end if;
-                end if;
-
-            -- Address Capture: QSR address register shift forward
-            when ADR_CAP_S =>
-                next_state <= ADR_LEFT_S;
-
-            -- Address Capture: Data is still missing
-            when ADR_LEFT_S =>
-                if ( to_integer(to_01(unsigned(char_cntr_cnt))) = 0 ) then
-                    next_state <= RDWR_SET_CHAR_CNTR_S;
                 else
                     next_state <= ADR_WT_CHAR_S;
                 end if;
 
-            -- Read/Write: Set character counter for chars to catch
-            when RDWR_SET_CHAR_CNTR_S =>
-                next_state <= RDWR_WT_CHAR_S;
+            -- Address: Capture QSR address register shift forward
+            when ADR_CAP_S =>
+                next_state <= ADR_WT_CHAR_S;
 
-            -- Read/Write: wait for ASCII hex char
-            when RDWR_WT_CHAR_S =>
+            -- Write: Preload Character Counter and Tiout Counter
+            when WR_SET_CNTR_DAT_TIOUT_S =>
+                next_state <= WR_WT_CHAR_S;
+
+            -- Write: Wait for new character and decide ongoing
+            when WR_WT_CHAR_S =>
                 if ( UART_RX_NEW = '1' ) then
                     if ( char_escape = '1' ) then       --! end of read/write requested
                         next_state <= LD_NL_MSG_S;
                     elsif ( char_blank = '1' or char_enter = '1' ) then --! all data collected, write goes on after
-                        next_state <= RDWR_MEM_ACS_S;
+                        next_state <= WR_MEMIF_S;
                     elsif ( UART_RX_NOHEX = '0' ) then
-                        next_state <= RDWR_CAP_S;       --! capture into QSR
-                    else
-                        next_state <= RDWR_WT_CHAR_S;   --! no suitable character, wait
-                    end if;
-                else
-                    next_state <= RDWR_WT_CHAR_S;       --! wait for char
-                end if;
-
-            -- Read/Write: capture into data or burst length QSR
-            when RDWR_CAP_S =>
-                next_state <= RDWR_WT_CHAR_S;
-
-            -- Read/Write: perform memory access
-            when RDWR_MEM_ACS_S =>
-                if ( to_integer(to_01(unsigned(tiout_cntr_cnt))) = 0 ) then
-                    next_state <= LD_MEMIF_STUCK_S;
-                else
-                    if ( MEM_ACK = '1' ) then
-                        if ( go_to_idle = '1' ) then    --! avoids lost of last written value, and exit
-                            next_state <= LD_NL_MSG_S;
+                        if ( to_integer(to_01(unsigned(char_cntr_cnt))) > 0 ) then  -- capture only address if space is left
+                            next_state <= WR_CAP_S;
                         else
-                            next_state <= RDWR_INCADR_DECBRST_S;
+                            next_state <= WR_WT_CHAR_S;
                         end if;
                     else
-                        next_state <= RDWR_MEM_ACS_S;
+                        next_state <= LD_UNEXPIN_MSG_S;     --! no suitable input, print no suitable input message with help
                     end if;
-                end if;
-
-            -- Read/Write: Increment Address, Decrement Burst Length
-            when RDWR_INCADR_DECBRST_S =>
-                if ( operation = OP_WRITE ) then
-                    next_state <= RDWR_SET_CHAR_CNTR_S;
-                elsif ( operation = OP_READ ) then
-                    next_state <= RD_SET_CHAR_CNTR_S;
                 else
-                    next_state <= ERROR_S;
+                    next_state <= WR_WT_CHAR_S;
                 end if;
 
-            -- Read: Set character counter
-            when RD_SET_CHAR_CNTR_S =>
+            -- Write: Capture UART RX Reg value into QSR
+            when WR_CAP_S =>
+                next_state <= WR_WT_CHAR_S;
+
+            -- Write: Request Memory Access
+            when WR_MEMIF_S =>
+                if ( to_integer(to_01(unsigned(tiout_cntr_cnt))) = 0 ) then
+                    next_state <= LD_MEMIF_STUCK_S;
+                elsif ( MEM_ACK = '1' ) then
+                    if ( char_enter = '1' ) then
+                        next_state <= LD_NL_MSG_S;
+                    else
+                        next_state <= WR_INC_ADR_S; --! increment address
+                    end if;
+                else
+                    next_state <= WR_MEMIF_S;
+                end if;
+
+            -- Write: Increment Address
+            when WR_INC_ADR_S =>
+                next_state <= WR_SET_CNTR_DAT_TIOUT_S;
+
+            -- Read: set character counter for burst length load
+            when RD_SET_CNTR_BRST_TIOUT_S =>
+                next_state <= RD_WT_CHAR_S;
+
+            -- Read: Wait for burst length character receive
+            when RD_WT_CHAR_S =>
+                if ( UART_RX_NEW = '1' ) then
+                    if ( char_escape = '1' ) then       --! end of read/write requested
+                        next_state <= LD_NL_MSG_S;
+                    elsif ( char_enter = '1' ) then
+                        next_state <= RD_MEMIF_S;
+                    elsif ( UART_RX_NOHEX = '0' ) then
+                        if ( to_integer(to_01(unsigned(char_cntr_cnt))) > 0 ) then  -- capture only address if space is left
+                            next_state <= RD_CAP_S;
+                        else
+                            next_state <= RD_WT_CHAR_S;
+                        end if;
+                    else
+                        next_state <= LD_UNEXPIN_MSG_S;     --! no suitable input, print no suitable input message with help
+                    end if;
+                else
+                    next_state <= RD_WT_CHAR_S;
+                end if;
+
+            -- Read: Capture input character
+            when RD_CAP_S =>
+                next_state <= RD_WT_CHAR_S;
+
+            -- Read: perform Read Access
+            when RD_MEMIF_S =>
+                if ( to_integer(to_01(unsigned(tiout_cntr_cnt))) = 0 ) then
+                    next_state <= LD_MEMIF_STUCK_S;
+                elsif ( MEM_ACK = '1' ) then
+                    next_state <= RD_SET_CHRSD_LDDAT_S;
+                else
+                    next_state <= RD_MEMIF_S;
+                end if;
+
+            -- Read: Load Counter for characters to send, load QSR with MEMIF data
+            when RD_SET_CHRSD_LDDAT_S =>
                 next_state <= RD_SEND_WT_S;
 
             -- Read: Wait for free TX Line, allow escape sequence
@@ -377,11 +405,15 @@ begin
 
             -- Read: Send blank to separate data from previous/next read
             when RD_SEND_BLNK_S =>
-                next_state <= RDWR_MEM_ACS_S;
+                next_state <= RD_INCADR_DECBRST_S;
 
-            -- Todo: remove
+            -- Read: Increment Address, Decrement Burst Counter
+            when RD_INCADR_DECBRST_S =>
+                next_state <= RD_MEMIF_S;
+
+            -- Misc: Go Idle
             when others =>
-                null;
+                next_state <= IDLE_S;
 
         end case;
     end process p_nxt_state;
@@ -399,7 +431,6 @@ begin
             operation       <= OP_NOP;          --!
             char_cntr_cnt   <= (others => '0'); --! reset
             tiout_cntr_cnt  <= (others => '0'); --!
-            go_to_idle      <= '0';
 
         elsif ( rising_edge(C) ) then
             current_state   <= next_state;          --! state update
@@ -408,7 +439,6 @@ begin
             operation       <= operation_nxt;       --!
             char_cntr_cnt   <= char_cntr_nxt;       --!
             tiout_cntr_cnt  <= tiout_cntr_nxt;      --!
-            go_to_idle      <= go_to_idle_nxt;      --!
 
         end if;
     end process p_register;
@@ -439,31 +469,22 @@ begin
 
         -- character counter count control
     with current_state select char_cntr_nxt <=
-        std_logic_vector(unsigned(char_cntr_cnt) - 1)                           when RDWR_CAP_S,            --! decrement, cause new character was captured
-        std_logic_vector(unsigned(char_cntr_cnt) - 1)                           when ADR_CAP_S,             --! decrement, cause new character was captured
-        std_logic_vector(to_unsigned(C_NUM_ADR_CHARS, char_cntr_nxt'length))    when ADR_SET_CHAR_CNTR_S,   --! preset for char count to meet address width
-        char_cntr_set_rd_wr                                                     when RDWR_SET_CHAR_CNTR_S,  --! preset for char count to meet data (wr) or burst (rd) char counter
-        char_cntr_set_rd_wr                                                     when RD_SET_CHAR_CNTR_S,    --! preset for char count to send all data
-        char_cntr_cnt                                                           when others;                --! hold
-
-        -- select preset based on read/write
-    with operation select char_cntr_set_rd_wr <=
-        std_logic_vector(to_unsigned(C_NUM_DATA_CHARS, char_cntr_nxt'length))   when OP_WRITE,  --! number chars to load data register
-        std_logic_vector(to_unsigned(C_NUM_ADR_CHARS, char_cntr_nxt'length))    when OP_READ,   --! number chars to load burst length register
-        (others => '0')                                                         when others;
+        std_logic_vector(unsigned(char_cntr_cnt) - 1)                           when ADR_CAP_S,                 --! decrement, cause new character was captured
+        std_logic_vector(to_unsigned(C_NUM_ADR_CHARS, char_cntr_nxt'length))    when ADR_SET_CHAR_CNTR_S,       --! preset for char count to meet address width
+        std_logic_vector(unsigned(char_cntr_cnt) - 1)                           when WR_CAP_S,                  --! decrement, cause new character was captured
+        std_logic_vector(to_unsigned(C_NUM_DATA_CHARS, char_cntr_nxt'length))   when WR_SET_CNTR_DAT_TIOUT_S,   --! preload character counter
+        std_logic_vector(to_unsigned(C_NUM_ADR_CHARS, char_cntr_nxt'length))    when RD_SET_CNTR_BRST_TIOUT_S,  --! preload character counter for burst capture register
+        std_logic_vector(to_unsigned(C_NUM_DATA_CHARS, char_cntr_nxt'length))   when RD_SET_CHRSD_LDDAT_S,      --! preset for char count to send all data
+        char_cntr_cnt                                                           when others;                    --! hold
 
         -- time out counter to detect memory IF stuck
     with current_state select tiout_cntr_nxt <=
-        std_logic_vector(to_unsigned(TIOUT_MEM_CYC, tiout_cntr_nxt'length)) when RDWR_SET_CHAR_CNTR_S,  --! init counter for first entry in memory access and request respond loop
-        std_logic_vector(to_unsigned(TIOUT_MEM_CYC, tiout_cntr_nxt'length)) when RD_SEND_BLNK_S,        --! read loop
-        std_logic_vector(unsigned(tiout_cntr_cnt) - 1)                      when RDWR_MEM_ACS_S,        --! decrement to run in tiout
-        tiout_cntr_cnt                                                      when others;                --! on hold
-
-        -- go to idle request flag
-    with current_state select go_to_idle_nxt <=
-        char_enter  when RDWR_WT_CHAR_S,    --! capture excape symbol, to leave after memory access
-        '0'         when IDLE_S,            --! clear idle request flag
-        go_to_idle  when others;            --! hold
+        std_logic_vector(to_unsigned(TIOUT_MEM_CYC, tiout_cntr_nxt'length)) when RD_SET_CNTR_BRST_TIOUT_S,  --! init counter for first entry in memory access and request respond loop
+        std_logic_vector(to_unsigned(TIOUT_MEM_CYC, tiout_cntr_nxt'length)) when WR_SET_CNTR_DAT_TIOUT_S,   --!
+        std_logic_vector(to_unsigned(TIOUT_MEM_CYC, tiout_cntr_nxt'length)) when RD_INCADR_DECBRST_S,       --! read loop
+        std_logic_vector(unsigned(tiout_cntr_cnt) - 1)                      when RD_MEMIF_S,                --! decrement to run in tiout
+        std_logic_vector(unsigned(tiout_cntr_cnt) - 1)                      when WR_MEMIF_S,                --! decrement to detect stuck
+        tiout_cntr_cnt                                                      when others;                    --! on hold
 
     ----------------------------------------------
 
@@ -507,7 +528,8 @@ begin
         -- TX MUX
     with current_state select UART_TX_MUX <=
         C_UART_MUX_RX   when IDLE_S,            --! mirror operator back to user
-        C_UART_MUX_RX   when RDWR_CAP_S,        --! send captured character back to user
+        C_UART_MUX_RX   when RD_CAP_S,          --! send captured character back to user
+        C_UART_MUX_RX   when WR_CAP_S,          --! send captured character back to user
         C_UART_MUX_MSG  when PRT_MSG_TX_WR_S,   --! ROM connected to UART
         C_UART_MUX_NUL  when others;            --! do nothing
 
@@ -520,51 +542,41 @@ begin
     ----------------------------------------------
     -- DATA IF
         -- memory write
-    MEM_WR  <=  '1' when ( current_state = RDWR_MEM_ACS_S and operation = OP_WRITE )    else '0';   --! write to memory data bus
+    with current_state select MEM_WR <=
+        '1'     when WR_MEMIF_S,    --! enable for write
+        '0'     when others;
 
-        -- memory enable
-    MEM_EN  <=  '1' when ( current_state = RDWR_MEM_ACS_S ) else '0';   --! request memory IF
-
+    -- memory enable
+    with current_state select MEM_EN <=
+        '1'     when WR_MEMIF_S,            --! write
+        '1'     when RD_MEMIF_S,            --! read
+        '1'     when RD_SET_CHRSD_LDDAT_S,  --! read, allow latch
+        '0'     when others;
     ----------------------------------------------
 
 
     ----------------------------------------------
     -- QSR IF
-        -- read: enable data QSR for parallel load
-    with operation select qsr_op_rd_pld <=
-        C_QSR_OP_PLD    when OP_READ,       --! read: parallel load to store for release
-        C_QSR_OP_NOP    when others;        --! write: reg stores data to write
-
-        -- read: enable data QSR for serial load
-    with operation select qsr_op_rd_sld <=
-        C_QSR_OP_SLD    when OP_READ,       --! read: parallel load to store for release
-        C_QSR_OP_NOP    when others;        --! write: reg stores data to write
-
-        -- write: enable data QSR for serial load
-    with operation select qsr_op_wr_sld <=
-        C_QSR_OP_SLD    when OP_WRITE,      --! write: serial load
-        C_QSR_OP_NOP    when others;        --! read: no usage
-
         -- address shift register
     with current_state select QSR_IST_ADR <=
-        C_QSR_OP_CLR    when CMD_CAPTURE_S,         --! clear address register
-        C_QSR_OP_SLD    when ADR_CAP_S,             --! serial load address
-        C_QSR_OP_INC    when RDWR_INCADR_DECBRST_S, --! increment address for next read
-        C_QSR_OP_NOP    when others;                --! do nothing
+        C_QSR_OP_CLR    when CMD_CAPTURE_S,     --! clear address register
+        C_QSR_OP_SLD    when ADR_CAP_S,         --! serial load address
+        C_QSR_OP_INC    when WR_INC_ADR_S,      --! increment address for next read
+        C_QSR_OP_NOP    when others;            --! do nothing
 
         -- data shift register
     with current_state select QSR_IST_DAT <=
         C_QSR_OP_CLR    when CMD_CAPTURE_S,         --! clear all shift register
-        qsr_op_wr_sld   when RDWR_CAP_S,            --! SLD/NOP based on operation to perform
-        qsr_op_rd_pld   when RDWR_MEM_ACS_S,        --! PLD/NOP based on operation to perform
-        C_QSR_OP_CLR    when RDWR_INCADR_DECBRST_S, --! increment address for next read
+        C_QSR_OP_SLD    when WR_CAP_S,              --! serial load
+        C_QSR_OP_PLD    when RD_SET_CHRSD_LDDAT_S,  --! PLD/NOP based on operation to perform
+        C_QSR_OP_CLR    when RD_INCADR_DECBRST_S,   --! increment address for next read
         C_QSR_OP_NOP    when others;                --! do nothing
 
         -- read length register (burst)
     with current_state select QSR_IST_BRST <=
         C_QSR_OP_CLR    when CMD_CAPTURE_S,         --! clear all shift register
-        qsr_op_rd_sld   when RDWR_CAP_S,            --! serial load in case of read, otherwise nop
-        C_QSR_OP_DEC    when RDWR_INCADR_DECBRST_S, --! decrement burst counter register
+        C_QSR_OP_SLD    when RD_CAP_S,              --! serial load in case of read, otherwise nop
+        C_QSR_OP_DEC    when RD_INCADR_DECBRST_S,   --! decrement burst counter register
         C_QSR_OP_NOP    when others;                --! do nothing
     ---------------------------------------------
 
