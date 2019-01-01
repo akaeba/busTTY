@@ -475,6 +475,7 @@ begin
         std_logic_vector(to_unsigned(C_NUM_DATA_CHARS, char_cntr_nxt'length))   when WR_SET_CNTR_DAT_TIOUT_S,   --! preload character counter
         std_logic_vector(to_unsigned(C_NUM_ADR_CHARS, char_cntr_nxt'length))    when RD_SET_CNTR_BRST_TIOUT_S,  --! preload character counter for burst capture register
         std_logic_vector(to_unsigned(C_NUM_DATA_CHARS, char_cntr_nxt'length))   when RD_SET_CHRSD_LDDAT_S,      --! preset for char count to send all data
+        std_logic_vector(unsigned(char_cntr_cnt) - 1)                           when RD_SEND_DAT_S,             --! decrement, char was sent
         char_cntr_cnt                                                           when others;                    --! hold
 
         -- time out counter to detect memory IF stuck
@@ -519,22 +520,25 @@ begin
 
     ----------------------------------------------
     -- UART IF
-        -- new data flag
+        -- TX Control
     with current_state select UART_TX_NEW <=
-        UART_RX_NEW when IDLE_S,                --! mirror operator back to user
-        '1'         when PRT_MSG_TX_WR_S,       --! write new character to UART
+        UART_RX_NEW when IDLE_S,            --! mirror operator back to user
+        '1'         when RD_CAP_S,          --! send captured character back to user
+        '1'         when WR_CAP_S,          --! send captured character back to user
+        '1'         when RD_SEND_BLNK_S,    --! send blank to separate
+        '1'         when PRT_MSG_TX_WR_S,   --! write new character to UART
+        '1'         when RD_SEND_DAT_S,     --! send data out
         '0'         when others;
 
-        -- TX MUX
+        -- TX Data MUX
     with current_state select UART_TX_MUX <=
         C_UART_MUX_RX   when IDLE_S,            --! mirror operator back to user
         C_UART_MUX_RX   when RD_CAP_S,          --! send captured character back to user
         C_UART_MUX_RX   when WR_CAP_S,          --! send captured character back to user
         C_UART_MUX_MSG  when PRT_MSG_TX_WR_S,   --! ROM connected to UART
+        C_UART_MUX_BLNK when RD_SEND_BLNK_S,    --! send blank to separate
+        C_UART_MUX_DATO when RD_SEND_DAT_S,     --! send QSR datao
         C_UART_MUX_NUL  when others;            --! do nothing
-
-
-
 
     ----------------------------------------------
 
@@ -560,22 +564,23 @@ begin
         -- address shift register
     with current_state select QSR_IST_ADR <=
         C_QSR_OP_CLR    when CMD_CAPTURE_S,     --! clear address register
-        C_QSR_OP_SLD    when ADR_CAP_S,         --! serial load address
+        C_QSR_OP_SFW    when ADR_CAP_S,         --! serial load address
         C_QSR_OP_INC    when WR_INC_ADR_S,      --! increment address for next read
         C_QSR_OP_NOP    when others;            --! do nothing
 
         -- data shift register
     with current_state select QSR_IST_DAT <=
         C_QSR_OP_CLR    when CMD_CAPTURE_S,         --! clear all shift register
-        C_QSR_OP_SLD    when WR_CAP_S,              --! serial load
+        C_QSR_OP_SFW    when WR_CAP_S,              --! shift forward
         C_QSR_OP_PLD    when RD_SET_CHRSD_LDDAT_S,  --! PLD/NOP based on operation to perform
         C_QSR_OP_CLR    when RD_INCADR_DECBRST_S,   --! increment address for next read
+        C_QSR_OP_SFW    when RD_SEND_DAT_S,         --! shift forward to bring next quadruple on send position
         C_QSR_OP_NOP    when others;                --! do nothing
 
         -- read length register (burst)
     with current_state select QSR_IST_BRST <=
         C_QSR_OP_CLR    when CMD_CAPTURE_S,         --! clear all shift register
-        C_QSR_OP_SLD    when RD_CAP_S,              --! serial load in case of read, otherwise nop
+        C_QSR_OP_SFW    when RD_CAP_S,              --! serial load in case of read, otherwise nop
         C_QSR_OP_DEC    when RD_INCADR_DECBRST_S,   --! decrement burst counter register
         C_QSR_OP_NOP    when others;                --! do nothing
     ---------------------------------------------
